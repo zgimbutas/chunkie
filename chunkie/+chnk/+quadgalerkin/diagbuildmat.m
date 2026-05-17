@@ -52,18 +52,29 @@ aux_block = zeros(naux*op1, k*op2);
 
 srcinfo = []; targinfo = [];
 
+use_exact_src = nargin >= 19 && ~isempty(exact_aux_geo) && ...
+                isfield(exact_aux_geo,'r_src');
+
 for inode = 1:naux
-    % -- per-target source rule (geometry interpolated from k disc nodes)
+    % -- per-target source rule (exact if provided, else interpolated)
     xj = xs0{inode};
     wj = whts0{inode};
     nptsj = numel(xj);
     ainterp_j = ainterps0{inode};            % nptsj x k
 
-    rs_j = (ainterp_j*(rs.')).';             % dim x nptsj
-    ds_j = (ainterp_j*(ds.')).';
-    d2s_j = (ainterp_j*(d2s.')).';
-    dfinenrm = sqrt(sum(ds_j.^2,1));
-    ns_j = [ds_j(2,:); -ds_j(1,:)]./dfinenrm;
+    if use_exact_src
+        rs_j  = exact_aux_geo.r_src {i,inode};
+        ds_j  = exact_aux_geo.d_src {i,inode};
+        d2s_j = exact_aux_geo.d2_src{i,inode};
+        dfinenrm = sqrt(sum(ds_j.^2,1));
+        ns_j  = exact_aux_geo.n_src {i,inode};
+    else
+        rs_j = (ainterp_j*(rs.')).';             % dim x nptsj
+        ds_j = (ainterp_j*(ds.')).';
+        d2s_j = (ainterp_j*(d2s.')).';
+        dfinenrm = sqrt(sum(ds_j.^2,1));
+        ns_j = [ds_j(2,:); -ds_j(1,:)]./dfinenrm;
+    end
     dsdt_j = dfinenrm(:).*wj(:);
 
     srcinfo.r = rs_j;  srcinfo.d = ds_j;

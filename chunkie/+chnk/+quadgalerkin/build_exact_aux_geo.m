@@ -47,16 +47,44 @@ geo.d  = zeros(dim,naux,nch);
 geo.d2 = zeros(dim,naux,nch);
 geo.n  = zeros(dim,naux,nch);
 
+% per-(panel, inode) source-side singular-rule geometry (matches
+% chunkmatc's chunkgeo(chunkpnt, t, ...) call from inside chunkfun3_aux
+% for every source node of the per-target singular rule).
+[~,~,xs0,~] = chnk.quadgalerkin.getlogquad_aux(chnkr.k);
+geo.r_src  = cell(nch, naux);
+geo.d_src  = cell(nch, naux);
+geo.d2_src = cell(nch, naux);
+geo.n_src  = cell(nch, naux);
+
 for i = 1:nch
     a = ab(1,i); b = ab(2,i);
     h = (b-a)/2;
+
+    % target-side aux geometry
     ts_global = (a+b)/2 + h*ts_aux;
     [r_i,d_i,d2_i] = fcurve(ts_global(:).');
     geo.r (:,:,i) = reshape(r_i, dim, naux);
-    geo.d (:,:,i) = reshape(d_i, dim, naux) * h;       % chunkie d w.r.t. [-1,1] param
+    geo.d (:,:,i) = reshape(d_i, dim, naux) * h;
     geo.d2(:,:,i) = reshape(d2_i,dim, naux) * h^2;
     dn = sqrt(sum(geo.d(:,:,i).^2,1));
     geo.n(:,:,i) = [geo.d(2,:,i); -geo.d(1,:,i)] ./ dn;
+
+    % source-side per-target rule geometry
+    for inode = 1:naux
+        xs_l = xs0{inode}(:).';
+        nptsj = numel(xs_l);
+        ts_l = (a+b)/2 + h*xs_l;
+        [r_l,d_l,d2_l] = fcurve(ts_l);
+        r_l  = reshape(r_l, dim, nptsj);
+        d_l  = reshape(d_l, dim, nptsj) * h;
+        d2_l = reshape(d2_l,dim, nptsj) * h^2;
+        dn_l = sqrt(sum(d_l.^2,1));
+        n_l = [d_l(2,:); -d_l(1,:)] ./ dn_l;
+        geo.r_src {i,inode} = r_l;
+        geo.d_src {i,inode} = d_l;
+        geo.d2_src{i,inode} = d2_l;
+        geo.n_src {i,inode} = n_l;
+    end
 end
 
 end
