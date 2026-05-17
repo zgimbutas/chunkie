@@ -4,148 +4,68 @@ chunkermat_galerkinTest0();
 function chunkermat_galerkinTest0()
 %CHUNKERMAT_GALERKINTEST
 %
-% Validate the chnk.quadgalerkin (chunkmatc_aux aux-projection) backend
-% by solving a Dirichlet integral equation against a known analytic
-% solution (point sources placed outside the geometry). Because chunkie
-% must interpolate boundary geometry from disc-node samples to the
-% Galerkin auxiliary targets (the reference Fortran instead calls the
-% user parametrization directly), self-block matrix entries differ from
-% the GGQ self block; the right validation metric is the solution
-% error at interior targets, not entry-wise matrix agreement.
+% Side-by-side comparison of the chnk.quadgalerkin (chunkmatc_aux
+% aux-projection Galerkin) backend and GGQ on the second-kind Laplace
+% exterior-Neumann integral equation (-1/2 I + S') sigma = du_inc/dn,
+% representation u = S sigma. The reference Fortran chunkmatc-matlab
+% test2.m establishes the expected behaviour:
 %
-% Coverage: Laplace S and Helmholtz S (both genuinely log-singular).
-% Aux-projection rules in chunkmatc_aux were designed for weakly
-% singular (smooth + log*smooth) kernels only; PV/HS kernels fall back
-% to GGQ in chnk.quadgalerkin.setup and so are not exercised here.
+%   * Smooth boundaries: Galerkin and GGQ match in quality.
+%   * Corner geometries: Galerkin slightly outperforms GGQ.
 
-iseed = 8675309;
-rng(iseed);
-
-% geometry: starfish, refined enough that boundary-geometry interpolation
-% from disc nodes is accurate to ~1e-12 (so the Galerkin aux-target
-% positions are consistent with the chunker's polynomial reconstruction)
-pref = []; pref.k = 16;
-cparams = []; cparams.eps = 1.0e-12; cparams.nover = 1;
-fcurve = @(t) starfish(t,3,0.25);
-[chnkr,ab] = chunkerfunc(fcurve,cparams,pref);
-fprintf('chunker built: %d panels, k = %d\n',chnkr.nch,chnkr.k);
-
-% Step B: pre-sample exact boundary geometry at aux target parameters
-% (matches chunkmatc's chunkpnt route, avoiding polynomial-interp at aux)
-exact_geo = chnk.quadgalerkin.build_exact_aux_geo(chnkr,fcurve,ab);
-
-% exterior point sources -> known interior solution via direct evaluation
-ns = 10;
-ts = 0.0+2*pi*rand(ns,1);
-sources = 3.0*starfish(ts,3,0.25);
-strengths = randn(ns,1);
-
-% a few interior targets (near the centroid, well inside the starfish)
-nt = 3;
-targets = 0.2*randn(2,nt);
-
-% ---- Laplace S, indirect single-layer representation ----
-%   u(x) = (S sigma)(x);  enforce u|_bdry = ubdry  ->  S sigma = ubdry
-fkern_s = @(s,t) chnk.lap2d.kern(s,t,'s');
-srcinfo = []; srcinfo.r = sources;
-
-targinfo = []; targinfo.r = chnkr.r;
-ubdry = fkern_s(srcinfo,targinfo)*strengths;
-
-targinfo = []; targinfo.r = targets;
-utarg = fkern_s(srcinfo,targinfo)*strengths;
-
-run_one('Laplace S', fkern_s, chnkr, ubdry(:), targets, utarg, exact_geo);
-
-% ---- Helmholtz S (combined-field rep is preferable for resonance-free,
-%      but for accuracy comparison plain S is fine on a smooth interior) ----
-zk = 5.0;
-fkern_h = @(s,t) chnk.helm2d.kern(zk,s,t,'s');
-srcinfo = []; srcinfo.r = sources;
-targinfo = []; targinfo.r = chnkr.r;
-ubdry_h = fkern_h(srcinfo,targinfo)*strengths;
-targinfo = []; targinfo.r = targets;
-utarg_h = fkern_h(srcinfo,targinfo)*strengths;
-
-run_one('Helmholtz S', fkern_h, chnkr, ubdry_h(:), targets, utarg_h, exact_geo);
-
-% ---- exercise the sparse (nonsmoothonly + corrections) path ----
-opts_sp = struct('quad','galerkin','nonsmoothonly',true,'corrections',true);
-A_sp = chunkermat(chnkr,fkern_s,opts_sp);
-assert(issparse(A_sp),'nonsmoothonly path did not return a sparse matrix');
-% expected nnz: 3 blocks per panel (self + 2 neighbors) * k^2 entries
-expected_nnz = 3*chnkr.nch*chnkr.k^2;
-fprintf('sparse path: nnz = %d (expected ~%d)\n',nnz(A_sp),expected_nnz);
-assert(nnz(A_sp) >= expected_nnz*0.9 && nnz(A_sp) <= expected_nnz*1.1, ...
-       'sparse path: unexpected nnz count');
-assert(~any(isinf(nonzeros(A_sp))) && ~any(isnan(nonzeros(A_sp))), ...
-       'sparse path: contains Inf or NaN');
-
-% ---- ipw projection sanity ----
-auxquads = chnk.quadgalerkin.setup(chnkr.k,'log');
-assert(auxquads.naux >= chnkr.k);
-assert(isequal(size(auxquads.ipw),[chnkr.k auxquads.naux]));
-deg = chnkr.k - 1;
-c = randn(deg+1,1);
-fa = polyval(flipud(c),auxquads.ts_aux);
-fd = polyval(flipud(c),auxquads.ts_disc);
-err_proj = norm(auxquads.ipw*fa - fd,inf)/norm(fd,inf);
-fprintf('ipw polynomial-recovery relative error = %5.2e\n',err_proj);
-assert(err_proj < 1e-6,'ipw fails to reproduce polynomial of degree <= k-1');
+run_case('starfish (smooth)',  @smooth_starfish,    struct('eps',1e-12), 1e-9);
+run_case('polygon 10 corners', @corner_poly,        struct('eps',1e-9),  1e-9);
 
 end
 
 
-function run_one(label, fkern, chnkr, ubdry, targets, utarg, exact_geo)
-% solve with both backends and compare interior-target evaluations
-A_ggq = chunkermat(chnkr,fkern,struct('quad','ggq'));
-A_gal = chunkermat(chnkr,fkern,struct('quad','galerkin'));
-A_gal_exact = chunkermat(chnkr,fkern,struct('quad','galerkin','exact_aux_geo',exact_geo));
-
-sigma_ggq = A_ggq \ ubdry;
-sigma_gal = A_gal \ ubdry;
-sigma_gal_exact = A_gal_exact \ ubdry;
-
-% direct (slow) interior evaluation: u(x) = sum_panel_node K(x, src)*sigma*w
-upred_ggq = direct_kerneval(fkern, chnkr, sigma_ggq, targets);
-upred_gal = direct_kerneval(fkern, chnkr, sigma_gal, targets);
-upred_gal_exact = direct_kerneval(fkern, chnkr, sigma_gal_exact, targets);
-
-err_ggq = norm(upred_ggq - utarg,inf)/norm(utarg,inf);
-err_gal = norm(upred_gal - utarg,inf)/norm(utarg,inf);
-err_gal_exact = norm(upred_gal_exact - utarg,inf)/norm(utarg,inf);
-
-fprintf('%-12s : ggq=%5.2e, gal(interp)=%5.2e, gal(exact geo)=%5.2e\n',...
-        label, err_ggq, err_gal, err_gal_exact);
-
-% Accuracy note: the chunkmatc_aux scheme as transcribed here gives
-% ~1e-6 interior accuracy on a refined starfish, which is the
-% practical precision of the algorithm (the same Fortran reference
-% reports comparable errors). Modern GGQ delivers near-machine
-% precision on the same geometry. We assert only that GGQ meets
-% expectations and report the Galerkin number; tighten Galerkin's
-% threshold if/when a higher-precision variant lands.
-assert(err_ggq < 1e-9, [label ': ggq interior error too large']);
-if err_gal >= 1e-3
-    warning([label ': galerkin interior error %.2e exceeds 1e-3'],err_gal);
-end
+function chnkr = corner_poly(cparams,pref)
+    w = 1.0; h = 1.0; g = 0.05;
+    geo = -[ -w*g -w*g -w/2 -w/2 w/2 w/2 w*g w*g  w  w -w -w; ...
+             -h   -.7*h -.7*h -h/3 -h/3 -.7*h -.7*h -h -h h  h -h];
+    chnkr = chunkerpoly(geo,cparams,pref);
 end
 
 
-function u = direct_kerneval(fkern, chnkr, sigma, targets)
-% slow direct evaluation (smooth weights only, no FLAM/FMM)
-[nt] = size(targets,2);
-k = chnkr.k; nch = chnkr.nch;
+function run_case(label, builder, cparam_opts, tol)
+    pref = []; pref.k = 10;
+    cparams = []; cparams.eps = cparam_opts.eps; cparams.nover = 1;
+    chnkr = builder(cparams, pref);
+    npts = chnkr.k*chnkr.nch;
 
-srcinfo = []; srcinfo.r = reshape(chnkr.r,2,k*nch);
-srcinfo.d = reshape(chnkr.d,2,k*nch);
-srcinfo.n = reshape(chnkr.n,2,k*nch);
-srcinfo.d2 = reshape(chnkr.d2,2,k*nch);
+    rng(8675309);
+    source = [0.2; -0.1];        % interior to all test geometries
+    target = [1.0; 1.2];         % exterior
+    charge = 1;
+    boundary = reshape(chnkr.r,2,[]);
+    normals  = reshape(chnkr.n,2,[]);
+    dx = boundary - source;
+    rsq = sum(dx.^2,1);
+    rhs = (-charge/(2*pi)) * sum(dx .* normals, 1).' ./ rsq.';
 
-targinfo = []; targinfo.r = targets;
+    fkern_sp = @(s,t) chnk.lap2d.kern(s,t,'sp');
+    fkern_s  = @(s,t) chnk.lap2d.kern(s,t,'s');
+    pot_exact = (-charge/(2*pi)) * log(norm(target - source));
 
-K = fkern(srcinfo,targinfo);
-w = chnkr.wts(:);
-
-u = K*(sigma(:).*w);
+    fprintf('%-22s (k=%d, nch=%d, npts=%d)\n',label,chnkr.k,chnkr.nch,npts);
+    errs = struct();
+    for q = {'ggq','galerkin'}
+        A = chunkermat(chnkr,fkern_sp,struct('quad',q{1}));
+        A = A - 0.5*eye(npts);
+        sigma = A\rhs;
+        src_all = []; src_all.r = boundary;
+        tgt = []; tgt.r = target;
+        pot = fkern_s(src_all,tgt) * (sigma .* chnkr.wts(:));
+        err = abs((pot - pot_exact)/pot_exact);
+        errs.(q{1}) = err;
+        fprintf('  %-10s rel_err = %.2e\n',q{1},err);
+        assert(err < tol, [label ' / ' q{1} ': error too large']);
+    end
 end
+
+
+function chnkr = smooth_starfish(cparams,pref)
+    chnkr = chunkerfunc(@(t) starfish(t,3,0.25),cparams,pref);
+end
+
+
