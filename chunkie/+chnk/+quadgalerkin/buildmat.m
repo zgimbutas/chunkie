@@ -62,44 +62,24 @@ for j = 1:nrules
     ainterps0kron{j} = kron(ainterps0{j},temp);
 end
 
-% aux-target / source-oversample data for off-diagonal aux-projection
-ts_aux_t = auxquads.ts_aux;
-ainterp_aux = auxquads.ainterp_aux;
-ipw = auxquads.ipw;
-ts_src = auxquads.ts_src;
-whts_src = auxquads.whts_src;
-ainterp_src = auxquads.ainterp_src;
-ainterp_src_kron = kron(ainterp_src,temp);
-
 % optional exact aux-target geometry (Step B): when present, overrides
-% polynomial-interpolated aux-target r/d/d2/n in {diag,smooth}buildmat
+% polynomial-interpolated aux-target r/d/d2/n in diagbuildmat
 if isfield(auxquads,'exact_aux_geo') && ~isempty(auxquads.exact_aux_geo)
     eag = auxquads.exact_aux_geo;
 else
     eag = [];
 end
 
-% aux-projection for every off-diagonal block (chunkmatc_aux_od port).
-% Self + neighbors will be overwritten below.
-sysmat = zeros(k*nch*opdims(1),k*nch*opdims(2));
-for it = 1:nch
-    imat = 1 + (it-1)*k*opdims(1);
-    imatend = it*k*opdims(1);
-    for js = 1:nch
-        if js == it || js == adj(1,it) || js == adj(2,it)
-            continue
-        end
-        if ~isempty(ilist) && ismember(it,ilist) && ismember(js,ilist)
-            continue
-        end
-        jmat_o = 1 + (js-1)*k*opdims(2);
-        jmatend_o = js*k*opdims(2);
-        sysmat(imat:imatend,jmat_o:jmatend_o) = ...
-            chnk.quadgalerkin.smoothbuildmat(r,d,n,d2,data,it,js,...
-                kern,opdims,ts_aux_t,ainterp_aux,ipw,...
-                ts_src,whts_src,ainterp_src,ainterp_src_kron,eag);
-    end
-end
+% Off-diagonal smooth baseline: plain native k-point Gauss-Legendre per
+% source panel. The chunkmatc_aux_od port (chnk.quadgalerkin.smoothbuildmat)
+% applied the aux-target ipw projection to every off-diagonal block, but
+% the closed-form ipw's Gram imperfection (~9e-5) becomes the precision
+% floor when the matrix is solved at high refinement (e.g. dyadically
+% refined corners). Native G-L converges spectrally and matches the
+% off-diagonal block accuracy GGQ achieves; the aux-projection is then
+% applied only to the self block where it actually changes the answer.
+wts_native = chnkr.wstor;
+sysmat = chnk.quadnative.buildmat(chnkr,kern,opdims,1:nch,1:nch,wts_native);
 
 % overwrite nbor and self
 for j = 1:nch
