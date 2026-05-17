@@ -451,6 +451,9 @@ for i=1:nchunkers
             auxquads = chnk.quadgalerkin.setup(k,type);
             opts.auxquads.(cachefield) = auxquads;
         end
+        if isfield(opts,'exact_aux_geo')
+            auxquads.exact_aux_geo = opts.exact_aux_geo;
+        end
         if nonsmoothonly
             sysmat_tmp = chnk.quadgalerkin.buildmattd(chnkr,ftmp,opdims,type,auxquads,jlist,corrections);
         else

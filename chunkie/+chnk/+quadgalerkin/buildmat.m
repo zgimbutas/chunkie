@@ -62,9 +62,44 @@ for j = 1:nrules
     ainterps0kron{j} = kron(ainterps0{j},temp);
 end
 
-% smooth-everywhere baseline (Gauss-Legendre at k disc nodes)
-wts = chnkr.wstor;
-sysmat = chnk.quadnative.buildmat(chnkr,kern,opdims,1:nch,1:nch,wts);
+% aux-target / source-oversample data for off-diagonal aux-projection
+ts_aux_t = auxquads.ts_aux;
+ainterp_aux = auxquads.ainterp_aux;
+ipw = auxquads.ipw;
+ts_src = auxquads.ts_src;
+whts_src = auxquads.whts_src;
+ainterp_src = auxquads.ainterp_src;
+ainterp_src_kron = kron(ainterp_src,temp);
+
+% optional exact aux-target geometry (Step B): when present, overrides
+% polynomial-interpolated aux-target r/d/d2/n in {diag,smooth}buildmat
+if isfield(auxquads,'exact_aux_geo') && ~isempty(auxquads.exact_aux_geo)
+    eag = auxquads.exact_aux_geo;
+else
+    eag = [];
+end
+
+% aux-projection for every off-diagonal block (chunkmatc_aux_od port).
+% Self + neighbors will be overwritten below.
+sysmat = zeros(k*nch*opdims(1),k*nch*opdims(2));
+for it = 1:nch
+    imat = 1 + (it-1)*k*opdims(1);
+    imatend = it*k*opdims(1);
+    for js = 1:nch
+        if js == it || js == adj(1,it) || js == adj(2,it)
+            continue
+        end
+        if ~isempty(ilist) && ismember(it,ilist) && ismember(js,ilist)
+            continue
+        end
+        jmat_o = 1 + (js-1)*k*opdims(2);
+        jmatend_o = js*k*opdims(2);
+        sysmat(imat:imatend,jmat_o:jmatend_o) = ...
+            chnk.quadgalerkin.smoothbuildmat(r,d,n,d2,data,it,js,...
+                kern,opdims,ts_aux_t,ainterp_aux,ipw,...
+                ts_src,whts_src,ainterp_src,ainterp_src_kron,eag);
+    end
+end
 
 % overwrite nbor and self
 for j = 1:nch
@@ -104,7 +139,8 @@ for j = 1:nch
     else
         submat = chnk.quadgalerkin.diagbuildmat(r,d,n,d2,data,j,kern,opdims,...
             xs0,wts0,ainterps0kron,ainterps0,...
-            auxquads.ts_aux,auxquads.ainterp_aux,auxquads.ipw);
+            auxquads.ts_aux,auxquads.ainterp_aux,auxquads.ipw,...
+            false,[],[],eag);
         imat = 1 + (j-1)*k*opdims(1);
         imatend = j*k*opdims(1);
         sysmat(imat:imatend,jmat:jmatend) = submat;

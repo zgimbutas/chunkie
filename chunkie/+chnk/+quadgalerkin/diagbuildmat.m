@@ -1,6 +1,7 @@
 function submat = diagbuildmat(r,d,n,d2,data,i,fkern,opdims,...
                                xs0,whts0,ainterps0kron,ainterps0,...
-                               ts_aux,ainterp_aux,ipw,corrections,wtss,indd)
+                               ts_aux,ainterp_aux,ipw,corrections,wtss,indd,...
+                               exact_aux_geo)
 %CHNK.QUADGALERKIN.DIAGBUILDMAT
 %
 % Self-panel block assembly for the chunkmatc_aux Galerkin scheme.
@@ -28,12 +29,19 @@ end
 naux = size(ipw,2);
 op1 = opdims(1); op2 = opdims(2);
 
-% -- target geometry at the naux aux nodes
-rt_aux = (ainterp_aux*(rs.')).';        % dim x naux
-dt_aux = (ainterp_aux*(ds.')).';
-d2t_aux = (ainterp_aux*(d2s.')).';
-dt_aux_nrm = sqrt(sum(dt_aux.^2,1));
-nt_aux = [dt_aux(2,:); -dt_aux(1,:)]./dt_aux_nrm;
+% -- target geometry at the naux aux nodes (exact if provided)
+if nargin >= 19 && ~isempty(exact_aux_geo)
+    rt_aux  = exact_aux_geo.r (:,:,i);
+    dt_aux  = exact_aux_geo.d (:,:,i);
+    d2t_aux = exact_aux_geo.d2(:,:,i);
+    nt_aux  = exact_aux_geo.n (:,:,i);
+else
+    rt_aux = (ainterp_aux*(rs.')).';        % dim x naux
+    dt_aux = (ainterp_aux*(ds.')).';
+    d2t_aux = (ainterp_aux*(d2s.')).';
+    dt_aux_nrm = sqrt(sum(dt_aux.^2,1));
+    nt_aux = [dt_aux(2,:); -dt_aux(1,:)]./dt_aux_nrm;
+end
 if ~isempty(dd)
     dd_aux = (ainterp_aux*(dd.')).';
 else

@@ -62,6 +62,13 @@ else
     aux = chnk.quadgalerkin.getauxquad(k,ts_disc,whts_disc);
 end
 
+% Oversampled smooth source-side rule for the off-diagonal aux-projection
+% (smoothbuildmat). 2*k Gauss-Legendre source nodes match the polynomial
+% exactness expected by the target-side aux-projection of degree ~k-1.
+nsrc = 2*k;
+[ts_src,whts_src] = lege.exps(nsrc);
+ainterp_src = lege.matrin(k,ts_src);
+
 ainterps0 = cell(numel(xs0),1);
 for j = 1:numel(xs0)
     ainterps0{j} = lege.matrin(k,xs0{j});
@@ -92,5 +99,11 @@ auxquad.vmatr = aux.vmatr;
 auxquad.vmatr_aux = aux.vmatr_aux;
 auxquad.ainterp_aux = aux.ainterp_aux;
 auxquad.ipw = aux.ipw;
+
+% oversampled smooth source-side rule (used by off-diagonal blocks)
+auxquad.nsrc = nsrc;
+auxquad.ts_src = ts_src;
+auxquad.whts_src = whts_src;
+auxquad.ainterp_src = ainterp_src;
 
 end

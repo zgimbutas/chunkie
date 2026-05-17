@@ -26,8 +26,13 @@ rng(iseed);
 % positions are consistent with the chunker's polynomial reconstruction)
 pref = []; pref.k = 16;
 cparams = []; cparams.eps = 1.0e-12; cparams.nover = 1;
-chnkr = chunkerfunc(@(t) starfish(t,3,0.25),cparams,pref);
+fcurve = @(t) starfish(t,3,0.25);
+[chnkr,ab] = chunkerfunc(fcurve,cparams,pref);
 fprintf('chunker built: %d panels, k = %d\n',chnkr.nch,chnkr.k);
+
+% Step B: pre-sample exact boundary geometry at aux target parameters
+% (matches chunkmatc's chunkpnt route, avoiding polynomial-interp at aux)
+exact_geo = chnk.quadgalerkin.build_exact_aux_geo(chnkr,fcurve,ab);
 
 % exterior point sources -> known interior solution via direct evaluation
 ns = 10;
@@ -50,7 +55,7 @@ ubdry = fkern_s(srcinfo,targinfo)*strengths;
 targinfo = []; targinfo.r = targets;
 utarg = fkern_s(srcinfo,targinfo)*strengths;
 
-run_one('Laplace S', fkern_s, chnkr, ubdry(:), targets, utarg);
+run_one('Laplace S', fkern_s, chnkr, ubdry(:), targets, utarg, exact_geo);
 
 % ---- Helmholtz S (combined-field rep is preferable for resonance-free,
 %      but for accuracy comparison plain S is fine on a smooth interior) ----
@@ -62,7 +67,7 @@ ubdry_h = fkern_h(srcinfo,targinfo)*strengths;
 targinfo = []; targinfo.r = targets;
 utarg_h = fkern_h(srcinfo,targinfo)*strengths;
 
-run_one('Helmholtz S', fkern_h, chnkr, ubdry_h(:), targets, utarg_h);
+run_one('Helmholtz S', fkern_h, chnkr, ubdry_h(:), targets, utarg_h, exact_geo);
 
 % ---- exercise the sparse (nonsmoothonly + corrections) path ----
 opts_sp = struct('quad','galerkin','nonsmoothonly',true,'corrections',true);
@@ -91,23 +96,27 @@ assert(err_proj < 1e-6,'ipw fails to reproduce polynomial of degree <= k-1');
 end
 
 
-function run_one(label, fkern, chnkr, ubdry, targets, utarg)
+function run_one(label, fkern, chnkr, ubdry, targets, utarg, exact_geo)
 % solve with both backends and compare interior-target evaluations
 A_ggq = chunkermat(chnkr,fkern,struct('quad','ggq'));
 A_gal = chunkermat(chnkr,fkern,struct('quad','galerkin'));
+A_gal_exact = chunkermat(chnkr,fkern,struct('quad','galerkin','exact_aux_geo',exact_geo));
 
 sigma_ggq = A_ggq \ ubdry;
 sigma_gal = A_gal \ ubdry;
+sigma_gal_exact = A_gal_exact \ ubdry;
 
 % direct (slow) interior evaluation: u(x) = sum_panel_node K(x, src)*sigma*w
 upred_ggq = direct_kerneval(fkern, chnkr, sigma_ggq, targets);
 upred_gal = direct_kerneval(fkern, chnkr, sigma_gal, targets);
+upred_gal_exact = direct_kerneval(fkern, chnkr, sigma_gal_exact, targets);
 
 err_ggq = norm(upred_ggq - utarg,inf)/norm(utarg,inf);
 err_gal = norm(upred_gal - utarg,inf)/norm(utarg,inf);
+err_gal_exact = norm(upred_gal_exact - utarg,inf)/norm(utarg,inf);
 
-fprintf('%-12s : ggq interior err = %5.2e, galerkin interior err = %5.2e\n',...
-        label, err_ggq, err_gal);
+fprintf('%-12s : ggq=%5.2e, gal(interp)=%5.2e, gal(exact geo)=%5.2e\n',...
+        label, err_ggq, err_gal, err_gal_exact);
 
 % Accuracy note: the chunkmatc_aux scheme as transcribed here gives
 % ~1e-6 interior accuracy on a refined starfish, which is the
