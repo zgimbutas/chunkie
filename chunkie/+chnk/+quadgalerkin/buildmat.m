@@ -70,16 +70,39 @@ else
     eag = [];
 end
 
-% Off-diagonal smooth baseline: plain native k-point Gauss-Legendre per
-% source panel. The chunkmatc_aux_od port (chnk.quadgalerkin.smoothbuildmat)
-% applied the aux-target ipw projection to every off-diagonal block, but
-% the closed-form ipw's Gram imperfection (~9e-5) becomes the precision
-% floor when the matrix is solved at high refinement (e.g. dyadically
-% refined corners). Native G-L converges spectrally and matches the
-% off-diagonal block accuracy GGQ achieves; the aux-projection is then
-% applied only to the self block where it actually changes the answer.
-wts_native = chnkr.wstor;
-sysmat = chnk.quadnative.buildmat(chnkr,kern,opdims,1:nch,1:nch,wts_native);
+% aux-target / source-oversample data for off-diagonal aux-projection
+ts_aux_t = auxquads.ts_aux;
+ainterp_aux = auxquads.ainterp_aux;
+ipw = auxquads.ipw;
+ts_src = auxquads.ts_src;
+whts_src = auxquads.whts_src;
+ainterp_src = auxquads.ainterp_src;
+ainterp_src_kron = kron(ainterp_src,temp);
+
+% aux-projection on every off-diagonal block (chunkmatc_aux_od port).
+% chunkmatc applies the same target-side ipw projection to every off-
+% diagonal block - this is required for the assembled matrix to match
+% the reference. Self + neighbors are overwritten below by their own
+% specialized rules.
+sysmat = zeros(k*nch*opdims(1),k*nch*opdims(2));
+for it = 1:nch
+    imat = 1 + (it-1)*k*opdims(1);
+    imatend = it*k*opdims(1);
+    for js = 1:nch
+        if js == it || js == adj(1,it) || js == adj(2,it)
+            continue
+        end
+        if ~isempty(ilist) && ismember(it,ilist) && ismember(js,ilist)
+            continue
+        end
+        jmat_o = 1 + (js-1)*k*opdims(2);
+        jmatend_o = js*k*opdims(2);
+        sysmat(imat:imatend,jmat_o:jmatend_o) = ...
+            chnk.quadgalerkin.smoothbuildmat(r,d,n,d2,data,it,js,...
+                kern,opdims,ts_aux_t,ainterp_aux,ipw,...
+                ts_src,whts_src,ainterp_src,ainterp_src_kron,eag);
+    end
+end
 
 % overwrite nbor and self
 for j = 1:nch
@@ -94,8 +117,9 @@ for j = 1:nch
         if ~isempty(ilist) && ismember(ibefore,ilist) && ismember(j,ilist)
             % skip if both chunks are in the bad list
         else
-            submat = chnk.quadgalerkin.nearbuildmat(r,d,n,d2,data,ibefore,j, ...
-                kern,opdims,xs1,wts1,ainterp1kron,ainterp1);
+            submat = chnk.quadgalerkin.smoothbuildmat(r,d,n,d2,data,ibefore,j, ...
+                kern,opdims,ts_aux_t,ainterp_aux,ipw,...
+                ts_src,whts_src,ainterp_src,ainterp_src_kron,eag);
             imat = 1 + (ibefore-1)*k*opdims(1);
             imatend = ibefore*k*opdims(1);
             sysmat(imat:imatend,jmat:jmatend) = submat;
@@ -106,8 +130,9 @@ for j = 1:nch
         if ~isempty(ilist) && ismember(iafter,ilist) && ismember(j,ilist)
             % skip
         else
-            submat = chnk.quadgalerkin.nearbuildmat(r,d,n,d2,data,iafter,j, ...
-                kern,opdims,xs1,wts1,ainterp1kron,ainterp1);
+            submat = chnk.quadgalerkin.smoothbuildmat(r,d,n,d2,data,iafter,j, ...
+                kern,opdims,ts_aux_t,ainterp_aux,ipw,...
+                ts_src,whts_src,ainterp_src,ainterp_src_kron,eag);
             imat = 1 + (iafter-1)*k*opdims(1);
             imatend = iafter*k*opdims(1);
             sysmat(imat:imatend,jmat:jmatend) = submat;
