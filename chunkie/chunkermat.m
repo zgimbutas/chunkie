@@ -437,6 +437,25 @@ for i=1:nchunkers
         else
             sysmat_tmp = chnk.quadnative.buildmat(chnkr,ftmp,opdims);
         end
+    elseif strcmpi(quad,'galerkin')
+        if strcmpi(singi,'smooth')
+            type = 'log';
+        else
+            type = singi;
+        end
+        cachefield = ['galerkin', type];
+        if isfield(opts,'auxquads') && isfield(opts.auxquads,cachefield)
+            auxquads = opts.auxquads.(cachefield);
+        else
+            k = chnkr.k;
+            auxquads = chnk.quadgalerkin.setup(k,type);
+            opts.auxquads.(cachefield) = auxquads;
+        end
+        if nonsmoothonly
+            error('chnk.quadgalerkin: nonsmoothonly mode not implemented');
+        else
+            sysmat_tmp = chnk.quadgalerkin.buildmat(chnkr,ftmp,opdims,type,auxquads,jlist);
+        end
     else
         warning('specified quadrature method not available');
         return;
