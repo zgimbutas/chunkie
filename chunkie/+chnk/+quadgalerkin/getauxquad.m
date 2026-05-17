@@ -38,7 +38,16 @@ ainterp_aux = lege.matrin(k,ts_aux);   % naux x k, interp disc values -> aux val
 vmatr_aux = ainterp_aux;               % coeffs -> aux values (== ainterp_aux*[disc->coeffs]^-1)
 
 % ipw(i,j) = (ws_aux(j) / whts_disc(i)) * L_i(ts_aux(j))
-% with L_i(ts_aux(j)) = ainterp_aux(j,i)
+% with L_i(ts_aux(j)) = ainterp_aux(j,i).
+%
+% This is the chunkmatc_form_ipipw weighted-L2 projection: a
+% quadrature-weighted approximation to <L_i, f>_L2 / <L_i, L_i>_L2.
+% For log-singular integrands as a function of target (the actual
+% structure of M_aux for self-block layer-potential integrals) this
+% is the right operator; substituting a polynomial least-squares fit
+% (e.g., pinv(ainterp_aux)) recovers polynomials of degree <= k-1 to
+% machine precision but produces a less accurate matrix because the
+% true M_aux has log-singular dependence on target.
 Lij = ainterp_aux.';                   % k x naux
 ipw = (1./whts_disc(:)) .* Lij .* (ws_aux(:).');
 

@@ -1,5 +1,5 @@
 function submat = nearbuildmat(r,d,n,d2,data,i,j,fkern,opdims,...
-                               xs1,whts1,ainterp1kron,ainterp1)
+                               xs1,whts1,ainterp1kron,ainterp1,corrections,wtss)
 %CHNK.QUADGALERKIN.NEARBUILDMAT
 %
 % Assemble a neighbor-panel block for the Galerkin (aux-projection)
@@ -46,5 +46,13 @@ dsdtndim2 = dsdtndim2(:);
 
 smatbig = fkern(srcinfo,targinfo);
 submat = smatbig*diag(dsdtndim2)*ainterp1kron;
+
+if nargin >= 14 && corrections
+    srcinfo = [];
+    srcinfo.r = rs;  srcinfo.d = ds;
+    srcinfo.d2 = d2s; srcinfo.n = ns;
+    wtsj = wtss(:,j);
+    submat = submat - fkern(srcinfo,targinfo).*(wtsj(:).');
+end
 
 end

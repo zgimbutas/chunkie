@@ -1,6 +1,6 @@
 function submat = diagbuildmat(r,d,n,d2,data,i,fkern,opdims,...
                                xs0,whts0,ainterps0kron,ainterps0,...
-                               ts_aux,ainterp_aux,ipw)
+                               ts_aux,ainterp_aux,ipw,corrections,wtss,indd)
 %CHNK.QUADGALERKIN.DIAGBUILDMAT
 %
 % Self-panel block assembly for the chunkmatc_aux Galerkin scheme.
@@ -85,6 +85,20 @@ if op1 == 1
     submat = ipw*aux_block;
 else
     submat = kron(ipw,eye(op1))*aux_block;
+end
+
+% -- optional: return only the correction to the smooth (native) baseline
+%    submat_corr = submat - K(disc_targ, disc_src) .* wts_disc(src)
+if nargin >= 16 && corrections
+    srcinfo.r = rs;  srcinfo.d = ds;
+    srcinfo.d2 = d2s; srcinfo.n = ns;
+    targinfo.r = rs; targinfo.d = ds;
+    targinfo.d2 = d2s; targinfo.n = ns;
+    targinfo.data = dd;  srcinfo.data = dd;
+    sc = fkern(srcinfo,targinfo);
+    sc(indd) = 0;             % drop the singular diagonal of the smooth K
+    wtsi = wtss(:,i);
+    submat = submat - sc.*(wtsi(:).');
 end
 
 end

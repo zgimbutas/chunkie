@@ -452,7 +452,7 @@ for i=1:nchunkers
             opts.auxquads.(cachefield) = auxquads;
         end
         if nonsmoothonly
-            error('chnk.quadgalerkin: nonsmoothonly mode not implemented');
+            sysmat_tmp = chnk.quadgalerkin.buildmattd(chnkr,ftmp,opdims,type,auxquads,jlist,corrections);
         else
             sysmat_tmp = chnk.quadgalerkin.buildmat(chnkr,ftmp,opdims,type,auxquads,jlist);
         end
