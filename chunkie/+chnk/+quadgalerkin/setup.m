@@ -1,67 +1,85 @@
-function auxquad = setup(k,type,naux)
+function auxquad = setup(k,type)
 %CHNK.QUADGALERKIN.SETUP
 %
 % Assemble the auxquads struct for the chunkmatc_aux Galerkin
-% (aux-node L2-projection) quadrature backend. The struct combines:
+% (aux-target L2-projection) quadrature backend. The struct combines:
 %
-%   * standard per-target singular sub-rules used by the self block
-%     (xs0/wts0/ainterps0) and the neighbor block (xs1/wts1/ainterp1),
-%     mirroring chnk.quadggq.setup; and
-%   * the auxiliary target oversampling data
-%     (ts_aux/whts_aux/vmatr_aux/ipw) used by the off-diagonal
-%     aux-projection variant (see chnk.quadgalerkin.smoothbuildmat).
+%   * The auxiliary target nodes (ts_aux/whts_aux), per-target singular
+%     source sub-rules (xs0{inode}/wts0{inode}), and the corresponding
+%     source-interpolation matrices ainterps0{inode}. Self-block rows
+%     are assembled at the naux aux targets then projected to the k
+%     disc-node rows via the L2 projection matrix ipw.
 %
-% quadratures will integrate functions of the form
+%   * A neighbor-panel intermediate rule (xs1/wts1/ainterp1) reused
+%     from the existing GGQ infrastructure.
 %
-%     f_0(x) + log(x-x_j)*f_1(x) + 1/(x-x_j)*f_2(x) + 1/(x-x_j)^2*f_3(x)
-%   type =    'log'                       'pv'                'hs'
-%
-% where the f_i are polynomials of order 2*k.
+% Phase 2 supports only 'log' singularity (Laplace single/double layer
+% and their analogs). 'pv', 'hs', 'smooth', 'removable' fall back to
+% the GGQ tables on the self block; the aux-projection apparatus is
+% still built so that the off-diagonal smoothbuildmat path remains
+% usable.
 %
 % input
-%   k    - order of Legendre nodes
-%   type - 'log', 'pv', 'hs', 'smooth', or 'removable'
-%   naux - number of auxiliary target nodes (default 2*k)
+%   k    - order of Legendre disc nodes
+%   type - 'log' (default), 'pv', 'hs', 'smooth', or 'removable'
 %
-% output: auxquad struct with the same fields as chnk.quadggq.setup plus
-%         the auxiliary-projection fields from chnk.quadgalerkin.getauxquad.
+% output
+%   auxquad - struct with fields
+%     .k, .naux, .type
+%     .ts_disc, .whts_disc, .umatr, .vmatr
+%     .ts_aux, .whts_aux, .vmatr_aux, .ainterp_aux, .ipw
+%     .xs0{inode}, .wts0{inode}, .ainterps0{inode}  (Galerkin or GGQ
+%                  depending on type)
+%     .xs1, .wts1, .ainterp1                        (neighbor rule)
 
-if nargin < 3 || isempty(naux)
-    naux = 2*k;
+if nargin < 2 || isempty(type)
+    type = 'log';
 end
 
+% standard neighbor (intermediate) rule from GGQ
 npolyfac = 2;
-[xs1,wts1,xs0,wts0] = chnk.quadgalerkin.getlogquad_aux(k,npolyfac);
-if strcmpi(type,'pv')
-    [xs0,wts0] = chnk.quadggq.gethqsuppquad(k,1);
-elseif strcmpi(type,'hs')
-    [xs0,wts0] = chnk.quadggq.gethqsuppquad(k,2);
-elseif strcmpi(type,'removable')
-    [xs0,wts0] = chnk.quadggq.getremovablequad(k,1);
-end
-
+[xs1,wts1] = chnk.quadggq.getlogquad(k,npolyfac);
 ainterp1 = lege.matrin(k,xs1);
 
-ainterps0 = cell(k,1);
-for j = 1:k
-    ainterps0{j} = lege.matrin(k,xs0{j});
+if strcmpi(type,'log') || strcmpi(type,'smooth')
+    % true Galerkin self-rule + matching aux targets
+    [ts_aux,ws_aux,xs0,wts0] = chnk.quadgalerkin.getlogquad_aux(k);
+    aux = chnk.quadgalerkin.getauxquad(k,ts_aux,ws_aux);
+else
+    % no Galerkin tables for pv/hs/removable yet: keep aux at the disc
+    % nodes (ipw becomes the identity) and use GGQ per-target rules
+    [~,~,xs0,wts0] = chnk.quadggq.getlogquad(k,npolyfac);
+    if strcmpi(type,'pv')
+        [xs0,wts0] = chnk.quadggq.gethqsuppquad(k,1);
+    elseif strcmpi(type,'hs')
+        [xs0,wts0] = chnk.quadggq.gethqsuppquad(k,2);
+    elseif strcmpi(type,'removable')
+        [xs0,wts0] = chnk.quadggq.getremovablequad(k,1);
+    end
+    [ts_disc,whts_disc] = lege.exps(k);
+    aux = chnk.quadgalerkin.getauxquad(k,ts_disc,whts_disc);
 end
 
-aux = chnk.quadgalerkin.getauxquad(k,naux);
+ainterps0 = cell(numel(xs0),1);
+for j = 1:numel(xs0)
+    ainterps0{j} = lege.matrin(k,xs0{j});
+end
 
 auxquad = [];
 auxquad.k = k;
 auxquad.type = type;
 
-% standard singular sub-rules
-auxquad.xs1 = xs1;
-auxquad.wts1 = wts1;
+% per-target singular sub-rules (used on the self block)
 auxquad.xs0 = xs0;
 auxquad.wts0 = wts0;
-auxquad.ainterp1 = ainterp1;
 auxquad.ainterps0 = ainterps0;
 
-% auxiliary target oversampling + L2 projection
+% neighbor (intermediate) rule
+auxquad.xs1 = xs1;
+auxquad.wts1 = wts1;
+auxquad.ainterp1 = ainterp1;
+
+% aux target infrastructure + L2 projection
 auxquad.naux = aux.naux;
 auxquad.ts_aux = aux.ts_aux;
 auxquad.whts_aux = aux.whts_aux;

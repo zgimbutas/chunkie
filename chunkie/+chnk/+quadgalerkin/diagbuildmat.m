@@ -1,72 +1,90 @@
 function submat = diagbuildmat(r,d,n,d2,data,i,fkern,opdims,...
-                               xs0,whts0,ainterps0kron,ainterps0)
+                               xs0,whts0,ainterps0kron,ainterps0,...
+                               ts_aux,ainterp_aux,ipw)
 %CHNK.QUADGALERKIN.DIAGBUILDMAT
 %
-% Assemble the self-panel block for the Galerkin (aux-projection)
-% backend. Per-target singular sub-rules xs0{j}/whts0{j} are applied
-% at each of the k disc target nodes on panel i; the source data
-% (r,d,d2,n,...) is interpolated from the k Legendre disc nodes to
-% the singular-rule nodes via ainterps0{j}.
+% Self-panel block assembly for the chunkmatc_aux Galerkin scheme.
 %
-% Structurally identical to chnk.quadggq.diagbuildmat. The Galerkin
-% L2 projection collapses to the standard interpolation-matrix path
-% on the self block because each target uses its own dedicated rule;
-% the aux-target oversampling is reserved for the off-diagonal
-% smoothbuildmat path (see chnk.quadgalerkin.smoothbuildmat).
+% For each of the naux auxiliary target nodes ts_aux(inode), use the
+% per-target singular source sub-rule (xs0{inode}, whts0{inode}) to
+% integrate the layer-potential kernel against the k disc-node source
+% basis functions. This builds a naux*opdims(1) x k*opdims(2) aux
+% block. Apply the L2 projection ipw (k x naux) on the target side to
+% collapse the aux rows to the k disc-node rows, producing a standard
+% k*opdims(1) x k*opdims(2) self block.
+%
+% Target geometry at the aux nodes (r, d, d2, n) is interpolated from
+% the k disc nodes via ainterp_aux. Source geometry is interpolated to
+% xs0{inode} via ainterps0{inode}, as in the GGQ self block.
 
-rs = r(:,:,i); ds = d(:,:,i); d2s = d2(:,:,i);
-ns = n(:,:,i);
+rs = r(:,:,i); ds = d(:,:,i); d2s = d2(:,:,i); ns = n(:,:,i);
 if isempty(data)
     dd = [];
 else
     dd = data(:,:,i);
 end
 
-[~,k] = size(rs);
+[dim,k] = size(rs);
+naux = size(ipw,2);
+op1 = opdims(1); op2 = opdims(2);
 
-rfine = cell(k,1);
-dfine = cell(k,1);
-nfine = cell(k,1);
-d2fine = cell(k,1);
-dsdt = cell(k,1);
-ddfine = cell(k,1);
-
-for j = 1:k
-    rfine{j} = (ainterps0{j}*(rs.')).';
-    dfine{j} = (ainterps0{j}*(ds.')).';
-    d2fine{j} = (ainterps0{j}*(d2s.')).';
-    dfinenrm = sqrt(sum(dfine{j}.^2,1));
-    nfine{j} = [dfine{j}(2,:); -dfine{j}(1,:)]./dfinenrm;
-    dsdt{j} = (dfinenrm(:)).*whts0{j};
-    if ~isempty(data)
-        ddfine{j} = ((ainterps0{j}*(dd.'))).';
-    end
+% -- target geometry at the naux aux nodes
+rt_aux = (ainterp_aux*(rs.')).';        % dim x naux
+dt_aux = (ainterp_aux*(ds.')).';
+d2t_aux = (ainterp_aux*(d2s.')).';
+dt_aux_nrm = sqrt(sum(dt_aux.^2,1));
+nt_aux = [dt_aux(2,:); -dt_aux(1,:)]./dt_aux_nrm;
+if ~isempty(dd)
+    dd_aux = (ainterp_aux*(dd.')).';
+else
+    dd_aux = [];
 end
 
-srcinfo = [];
-targinfo = [];
+aux_block = zeros(naux*op1, k*op2);
 
-submat = zeros(k*opdims(1), k*opdims(2));
+srcinfo = []; targinfo = [];
 
-for j = 1:k
-    srcinfo.r = rfine{j};  srcinfo.d = dfine{j};
-    srcinfo.d2 = d2fine{j}; srcinfo.n = nfine{j};
-    targinfo.r = rs(:,j);  targinfo.d = ds(:,j);
-    targinfo.d2 = d2s(:,j); targinfo.n = ns(:,j);
+for inode = 1:naux
+    % -- per-target source rule (geometry interpolated from k disc nodes)
+    xj = xs0{inode};
+    wj = whts0{inode};
+    nptsj = numel(xj);
+    ainterp_j = ainterps0{inode};            % nptsj x k
+
+    rs_j = (ainterp_j*(rs.')).';             % dim x nptsj
+    ds_j = (ainterp_j*(ds.')).';
+    d2s_j = (ainterp_j*(d2s.')).';
+    dfinenrm = sqrt(sum(ds_j.^2,1));
+    ns_j = [ds_j(2,:); -ds_j(1,:)]./dfinenrm;
+    dsdt_j = dfinenrm(:).*wj(:);
+
+    srcinfo.r = rs_j;  srcinfo.d = ds_j;
+    srcinfo.d2 = d2s_j; srcinfo.n = ns_j;
+    targinfo.r = rt_aux(:,inode);  targinfo.d = dt_aux(:,inode);
+    targinfo.d2 = d2t_aux(:,inode); targinfo.n = nt_aux(:,inode);
     if isempty(dd)
-        targinfo.data = [];
-        srcinfo.data = [];
+        srcinfo.data = [];  targinfo.data = [];
     else
-        srcinfo.data = ddfine{j};
-        targinfo.data = dd(:,j);
+        srcinfo.data = (ainterp_j*(dd.')).';
+        targinfo.data = dd_aux(:,inode);
     end
 
-    smatbigi = fkern(srcinfo,targinfo);
-    dsdtndim2 = repmat(dsdt{j}.',opdims(2),1);
-    dsdtndim2 = dsdtndim2(:);
-    smatbigi = bsxfun(@times,smatbigi,dsdtndim2.');
-    submat(opdims(1)*(j-1)+1:opdims(1)*j,:) = ...
-        smatbigi*ainterps0kron{j};
+    % -- row at this aux target, of shape op1 x nptsj*op2
+    row_aux = fkern(srcinfo,targinfo);
+    dsdtndim2 = repmat(dsdt_j(:).',op2,1); dsdtndim2 = dsdtndim2(:);
+    row_aux = bsxfun(@times,row_aux,dsdtndim2.');
+
+    % -- source-side interpolation: nptsj*op2 -> k*op2
+    ainterp_j_kron = ainterps0kron{inode};   % nptsj*op2 x k*op2
+
+    aux_block(op1*(inode-1)+1:op1*inode, :) = row_aux*ainterp_j_kron;
+end
+
+% -- target-side L2 projection: naux*op1 -> k*op1 via kron(ipw, I_op1)
+if op1 == 1
+    submat = ipw*aux_block;
+else
+    submat = kron(ipw,eye(op1))*aux_block;
 end
 
 end

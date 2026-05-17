@@ -56,8 +56,9 @@ ainterp1 = auxquads.ainterp1;
 ainterp1kron = kron(ainterp1,temp);
 
 ainterps0 = auxquads.ainterps0;
-ainterps0kron = cell(k,1);
-for j = 1:k
+nrules = numel(ainterps0);
+ainterps0kron = cell(nrules,1);
+for j = 1:nrules
     ainterps0kron{j} = kron(ainterps0{j},temp);
 end
 
@@ -102,7 +103,8 @@ for j = 1:nch
         % skip self
     else
         submat = chnk.quadgalerkin.diagbuildmat(r,d,n,d2,data,j,kern,opdims,...
-            xs0,wts0,ainterps0kron,ainterps0);
+            xs0,wts0,ainterps0kron,ainterps0,...
+            auxquads.ts_aux,auxquads.ainterp_aux,auxquads.ipw);
         imat = 1 + (j-1)*k*opdims(1);
         imatend = j*k*opdims(1);
         sysmat(imat:imatend,jmat:jmatend) = submat;
