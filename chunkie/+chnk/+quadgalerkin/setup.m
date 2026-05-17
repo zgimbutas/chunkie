@@ -42,12 +42,14 @@ npolyfac = 2;
 ainterp1 = lege.matrin(k,xs1);
 
 if strcmpi(type,'log') || strcmpi(type,'smooth')
-    % true Galerkin self-rule + matching aux targets
+    % The chunkmatc_aux auxiliary Galerkin rules were designed for
+    % weakly singular kernels only (smooth + log*smooth), with ~30
+    % digits of precision. PV / HS / removable variants are not in
+    % scope; those fall back to GGQ rules with identity ipw so the
+    % self block reproduces the GGQ block exactly.
     [ts_aux,ws_aux,xs0,wts0] = chnk.quadgalerkin.getlogquad_aux(k);
     aux = chnk.quadgalerkin.getauxquad(k,ts_aux,ws_aux);
 else
-    % no Galerkin tables for pv/hs/removable yet: keep aux at the disc
-    % nodes (ipw becomes the identity) and use GGQ per-target rules
     [~,~,xs0,wts0] = chnk.quadggq.getlogquad(k,npolyfac);
     if strcmpi(type,'pv')
         [xs0,wts0] = chnk.quadggq.gethqsuppquad(k,1);
