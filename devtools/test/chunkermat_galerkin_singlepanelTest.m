@@ -11,20 +11,16 @@ function chunkermat_galerkin_singlepanelTest0()
 % the GGQ self block and the chnk.quadgalerkin self block is purely
 % algorithmic / projection-induced.
 %
-% Reports the relative Frobenius diff vs k. Observed: my port's
-% Galerkin self block disagrees with GGQ by ~1.5%-3% across all k,
-% with the diff decreasing slowly (only ~1.5x per doubling of k).
-% This is the closed-form chunkmatc_form_ipipw projection's intrinsic
-% Gram-orthogonality imperfection on log-tuned aux nodes — the same
-% formula as the chunkmatc reference and chunkmatc-matlab/form_ipw.m,
-% so the port's matrix-level behaviour is exactly that of the
-% reference algorithm.
-%
-% Whether the reference Fortran achieves materially better matrix
-% entries on the same problem is open: the chunkmatc-matlab mex is
-% from an older MATLAB and crashes R2024b, so a direct head-to-head
-% on this same simple geometry is currently impossible to verify
-% from this machine.
+% Reports the relative Frobenius diff vs k. Observed: the Galerkin
+% self block differs from GGQ by ~1.5%-3% across all k, shrinking
+% slowly (~1.5x per doubling of k). This difference is EXPECTED, not
+% an error: the GGQ block row is the potential evaluated at the disc
+% node (Nystrom), while the Galerkin row is its weighted-L2 projection
+% onto degree k-1 polynomials. The self-panel potential has endpoint
+% singularities of the form (1-t)log(1-t), so its projection differs
+% from its nodal values at the observed slowly-decaying level. Both
+% discretizations solve BVPs to comparable (spectral) accuracy; see
+% the companion convergence and capacitance tests.
 
 L = 0.4;
 fkern = @(s,t) chnk.lap2d.kern(s,t,'s');

@@ -1,22 +1,25 @@
 function submat = diagbuildmat(r,d,n,d2,data,i,fkern,opdims,...
                                xs0,whts0,ainterps0kron,ainterps0,...
-                               ts_aux,ainterp_aux,ipw,corrections,wtss,indd,...
-                               exact_aux_geo)
+                               ainterp_aux,ipw,corrections,wtss,indd)
 %CHNK.QUADGALERKIN.DIAGBUILDMAT
 %
 % Self-panel block assembly for the chunkmatc_aux Galerkin scheme.
 %
-% For each of the naux auxiliary target nodes ts_aux(inode), use the
-% per-target singular source sub-rule (xs0{inode}, whts0{inode}) to
-% integrate the layer-potential kernel against the k disc-node source
-% basis functions. This builds a naux*opdims(1) x k*opdims(2) aux
-% block. Apply the L2 projection ipw (k x naux) on the target side to
-% collapse the aux rows to the k disc-node rows, producing a standard
+% For each of the naux auxiliary target nodes, use the per-target
+% singular source sub-rule (xs0{inode}, whts0{inode}) to integrate the
+% layer-potential kernel against the k disc-node source basis
+% functions. This builds a naux*opdims(1) x k*opdims(2) aux block.
+% Apply the L2 projection ipw (k x naux) on the target side to collapse
+% the aux rows to the k disc-node rows, producing a standard
 % k*opdims(1) x k*opdims(2) self block.
 %
 % Target geometry at the aux nodes (r, d, d2, n) is interpolated from
 % the k disc nodes via ainterp_aux. Source geometry is interpolated to
 % xs0{inode} via ainterps0{inode}, as in the GGQ self block.
+%
+% When corrections is true, the native smooth (Gauss-Legendre) block
+% with zeroed singular diagonal is subtracted so the result can be
+% added on top of a pre-built smooth matrix.
 
 rs = r(:,:,i); ds = d(:,:,i); d2s = d2(:,:,i); ns = n(:,:,i);
 if isempty(data)
@@ -25,23 +28,16 @@ else
     dd = data(:,:,i);
 end
 
-[dim,k] = size(rs);
+[~,k] = size(rs);
 naux = size(ipw,2);
 op1 = opdims(1); op2 = opdims(2);
 
-% -- target geometry at the naux aux nodes (exact if provided)
-if nargin >= 19 && ~isempty(exact_aux_geo)
-    rt_aux  = exact_aux_geo.r (:,:,i);
-    dt_aux  = exact_aux_geo.d (:,:,i);
-    d2t_aux = exact_aux_geo.d2(:,:,i);
-    nt_aux  = exact_aux_geo.n (:,:,i);
-else
-    rt_aux = (ainterp_aux*(rs.')).';        % dim x naux
-    dt_aux = (ainterp_aux*(ds.')).';
-    d2t_aux = (ainterp_aux*(d2s.')).';
-    dt_aux_nrm = sqrt(sum(dt_aux.^2,1));
-    nt_aux = [dt_aux(2,:); -dt_aux(1,:)]./dt_aux_nrm;
-end
+% -- target geometry at the naux aux nodes
+rt_aux = (ainterp_aux*(rs.')).';        % dim x naux
+dt_aux = (ainterp_aux*(ds.')).';
+d2t_aux = (ainterp_aux*(d2s.')).';
+dt_aux_nrm = sqrt(sum(dt_aux.^2,1));
+nt_aux = [dt_aux(2,:); -dt_aux(1,:)]./dt_aux_nrm;
 if ~isempty(dd)
     dd_aux = (ainterp_aux*(dd.')).';
 else
@@ -52,29 +48,16 @@ aux_block = zeros(naux*op1, k*op2);
 
 srcinfo = []; targinfo = [];
 
-use_exact_src = nargin >= 19 && ~isempty(exact_aux_geo) && ...
-                isfield(exact_aux_geo,'r_src');
-
 for inode = 1:naux
-    % -- per-target source rule (exact if provided, else interpolated)
-    xj = xs0{inode};
+    % -- per-target source rule
     wj = whts0{inode};
-    nptsj = numel(xj);
     ainterp_j = ainterps0{inode};            % nptsj x k
 
-    if use_exact_src
-        rs_j  = exact_aux_geo.r_src {i,inode};
-        ds_j  = exact_aux_geo.d_src {i,inode};
-        d2s_j = exact_aux_geo.d2_src{i,inode};
-        dfinenrm = sqrt(sum(ds_j.^2,1));
-        ns_j  = exact_aux_geo.n_src {i,inode};
-    else
-        rs_j = (ainterp_j*(rs.')).';             % dim x nptsj
-        ds_j = (ainterp_j*(ds.')).';
-        d2s_j = (ainterp_j*(d2s.')).';
-        dfinenrm = sqrt(sum(ds_j.^2,1));
-        ns_j = [ds_j(2,:); -ds_j(1,:)]./dfinenrm;
-    end
+    rs_j = (ainterp_j*(rs.')).';             % dim x nptsj
+    ds_j = (ainterp_j*(ds.')).';
+    d2s_j = (ainterp_j*(d2s.')).';
+    dfinenrm = sqrt(sum(ds_j.^2,1));
+    ns_j = [ds_j(2,:); -ds_j(1,:)]./dfinenrm;
     dsdt_j = dfinenrm(:).*wj(:);
 
     srcinfo.r = rs_j;  srcinfo.d = ds_j;
@@ -108,7 +91,7 @@ end
 
 % -- optional: return only the correction to the smooth (native) baseline
 %    submat_corr = submat - K(disc_targ, disc_src) .* wts_disc(src)
-if nargin >= 16 && corrections
+if nargin >= 15 && corrections
     srcinfo.r = rs;  srcinfo.d = ds;
     srcinfo.d2 = d2s; srcinfo.n = ns;
     targinfo.r = rs; targinfo.d = ds;

@@ -1,8 +1,13 @@
 function sysmat = buildmat(chnkr,kern,opdims,type,auxquads,ilist)
 %CHNK.QUADGALERKIN.BUILDMAT build matrix for given kernel and chnkr
 % description of boundary, using the chunkmatc_aux Galerkin
-% (aux-node L2-projection) quadrature scheme for self and neighbor
-% panels and smooth Gauss-Legendre for the rest.
+% (aux-node L2-projection) quadrature scheme. Rows of every block are
+% evaluated at the naux auxiliary target nodes and collapsed to the k
+% disc-node rows by the L2 projection ipw, matching the Fortran
+% reference's projection-everywhere design. The source rule varies by
+% block: per-target singular tables on the self block, the GGQ log
+% intermediate rule on neighbor blocks, and an oversampled smooth
+% Gauss-Legendre rule on well-separated blocks.
 %
 % Input:
 %   chnkr - chunker object describing boundary
@@ -47,11 +52,11 @@ end
 
 temp = eye(opdims(2));
 
-xs1 = auxquads.xs1;
-wts1 = auxquads.wts1;
 xs0 = auxquads.xs0;
 wts0 = auxquads.wts0;
 
+xs1 = auxquads.xs1;
+wts1 = auxquads.wts1;
 ainterp1 = auxquads.ainterp1;
 ainterp1kron = kron(ainterp1,temp);
 
@@ -62,16 +67,7 @@ for j = 1:nrules
     ainterps0kron{j} = kron(ainterps0{j},temp);
 end
 
-% optional exact aux-target geometry (Step B): when present, overrides
-% polynomial-interpolated aux-target r/d/d2/n in diagbuildmat
-if isfield(auxquads,'exact_aux_geo') && ~isempty(auxquads.exact_aux_geo)
-    eag = auxquads.exact_aux_geo;
-else
-    eag = [];
-end
-
-% aux-target / source-oversample data for off-diagonal aux-projection
-ts_aux_t = auxquads.ts_aux;
+% aux-target / source-oversample data for far-block aux-projection
 ainterp_aux = auxquads.ainterp_aux;
 ipw = auxquads.ipw;
 ts_src = auxquads.ts_src;
@@ -79,11 +75,11 @@ whts_src = auxquads.whts_src;
 ainterp_src = auxquads.ainterp_src;
 ainterp_src_kron = kron(ainterp_src,temp);
 
-% aux-projection on every off-diagonal block (chunkmatc_aux_od port).
+% aux-projection on every well-separated block (chunkmatc_aux_od port).
 % chunkmatc applies the same target-side ipw projection to every off-
 % diagonal block - this is required for the assembled matrix to match
-% the reference. Self + neighbors are overwritten below by their own
-% specialized rules.
+% the reference. Self and neighbor blocks are filled below with source
+% rules that resolve their (near-)singularities.
 sysmat = zeros(k*nch*opdims(1),k*nch*opdims(2));
 for it = 1:nch
     imat = 1 + (it-1)*k*opdims(1);
@@ -99,12 +95,12 @@ for it = 1:nch
         jmatend_o = js*k*opdims(2);
         sysmat(imat:imatend,jmat_o:jmatend_o) = ...
             chnk.quadgalerkin.smoothbuildmat(r,d,n,d2,data,it,js,...
-                kern,opdims,ts_aux_t,ainterp_aux,ipw,...
-                ts_src,whts_src,ainterp_src,ainterp_src_kron,eag);
+                kern,opdims,ainterp_aux,ipw,...
+                ts_src,whts_src,ainterp_src,ainterp_src_kron);
     end
 end
 
-% overwrite nbor and self
+% nbor and self
 for j = 1:nch
 
     jmat = 1 + (j-1)*k*opdims(2);
@@ -117,9 +113,8 @@ for j = 1:nch
         if ~isempty(ilist) && ismember(ibefore,ilist) && ismember(j,ilist)
             % skip if both chunks are in the bad list
         else
-            submat = chnk.quadgalerkin.smoothbuildmat(r,d,n,d2,data,ibefore,j, ...
-                kern,opdims,ts_aux_t,ainterp_aux,ipw,...
-                ts_src,whts_src,ainterp_src,ainterp_src_kron,eag);
+            submat = chnk.quadgalerkin.nearbuildmat(r,d,n,d2,data,ibefore,j, ...
+                kern,opdims,xs1,wts1,ainterp1kron,ainterp1,ainterp_aux,ipw);
             imat = 1 + (ibefore-1)*k*opdims(1);
             imatend = ibefore*k*opdims(1);
             sysmat(imat:imatend,jmat:jmatend) = submat;
@@ -130,9 +125,8 @@ for j = 1:nch
         if ~isempty(ilist) && ismember(iafter,ilist) && ismember(j,ilist)
             % skip
         else
-            submat = chnk.quadgalerkin.smoothbuildmat(r,d,n,d2,data,iafter,j, ...
-                kern,opdims,ts_aux_t,ainterp_aux,ipw,...
-                ts_src,whts_src,ainterp_src,ainterp_src_kron,eag);
+            submat = chnk.quadgalerkin.nearbuildmat(r,d,n,d2,data,iafter,j, ...
+                kern,opdims,xs1,wts1,ainterp1kron,ainterp1,ainterp_aux,ipw);
             imat = 1 + (iafter-1)*k*opdims(1);
             imatend = iafter*k*opdims(1);
             sysmat(imat:imatend,jmat:jmatend) = submat;
@@ -143,9 +137,7 @@ for j = 1:nch
         % skip self
     else
         submat = chnk.quadgalerkin.diagbuildmat(r,d,n,d2,data,j,kern,opdims,...
-            xs0,wts0,ainterps0kron,ainterps0,...
-            auxquads.ts_aux,auxquads.ainterp_aux,auxquads.ipw,...
-            false,[],[],eag);
+            xs0,wts0,ainterps0kron,ainterps0,ainterp_aux,ipw);
         imat = 1 + (j-1)*k*opdims(1);
         imatend = j*k*opdims(1);
         sysmat(imat:imatend,jmat:jmatend) = submat;

@@ -1,14 +1,14 @@
 function submat = smoothbuildmat(r,d,n,d2,data,i,j,fkern,opdims,...
-                                 ts_aux,ainterp_aux,ipw,...
-                                 ts_src,whts_src,ainterp_src,ainterp_src_kron,...
-                                 exact_aux_geo)
+                                 ainterp_aux,ipw,...
+                                 ts_src,whts_src,ainterp_src,ainterp_src_kron)
 %CHNK.QUADGALERKIN.SMOOTHBUILDMAT
 %
-% Off-diagonal (target panel i, source panel j != i) block assembly for
-% the chunkmatc_aux Galerkin scheme, matching chunkmatc_aux_od in
-% chunkmatc.f. For each of the naux auxiliary target nodes on panel i:
+% Well-separated (target panel i, source panel j not adjacent to i)
+% block assembly for the chunkmatc_aux Galerkin scheme, matching
+% chunkmatc_aux_od in chunkmatc.f. For each of the naux auxiliary
+% target nodes on panel i:
 %
-%   1. Interpolate target geometry to ts_aux(inode) via ainterp_aux.
+%   1. Interpolate target geometry to the aux nodes via ainterp_aux.
 %   2. Interpolate source geometry on panel j to the oversampled source
 %      rule nodes ts_src via ainterp_src.
 %   3. Evaluate the smooth kernel between every (aux_target, src) pair
@@ -23,13 +23,14 @@ function submat = smoothbuildmat(r,d,n,d2,data,i,j,fkern,opdims,...
 % at the k disc targets, this routine evaluates at the naux aux targets
 % and projects back, matching the Fortran reference's projection-
 % everywhere design. For well-separated smooth blocks the result is
-% numerically indistinguishable from native Gauss-Legendre, but using
-% the aux-projection consistently across self / near / far avoids the
-% asymmetry that otherwise compounds with the (imperfect) closed-form
-% ipw on log-tuned aux nodes.
+% numerically indistinguishable from native Gauss-Legendre. The smooth
+% source rule is only valid for well-separated panels: neighbor blocks
+% must use chnk.quadgalerkin.nearbuildmat, whose intermediate rule
+% resolves the near-log singularity seen by aux targets clustered
+% toward the shared endpoint.
 
-rs = r(:,:,j); ds_src = d(:,:,j); d2s = d2(:,:,j); ns = n(:,:,j);
-rt = r(:,:,i); dt_targ = d(:,:,i); d2t = d2(:,:,i); nt = n(:,:,i);
+rs = r(:,:,j); ds_src = d(:,:,j); d2s = d2(:,:,j);
+rt = r(:,:,i); dt_targ = d(:,:,i); d2t = d2(:,:,i);
 
 if isempty(data)
     dds = []; ddt = [];
@@ -39,22 +40,13 @@ else
 end
 
 op1 = opdims(1); op2 = opdims(2);
-naux = size(ipw,2);
-nsrc = numel(ts_src);
 
-% target geometry at naux aux nodes (exact if provided, else interpolated)
-if nargin >= 17 && ~isempty(exact_aux_geo)
-    rt_aux  = exact_aux_geo.r (:,:,i);
-    dt_aux  = exact_aux_geo.d (:,:,i);
-    d2t_aux = exact_aux_geo.d2(:,:,i);
-    nt_aux  = exact_aux_geo.n (:,:,i);
-else
-    rt_aux = (ainterp_aux*(rt.')).';
-    dt_aux = (ainterp_aux*(dt_targ.')).';
-    d2t_aux = (ainterp_aux*(d2t.')).';
-    dt_aux_nrm = sqrt(sum(dt_aux.^2,1));
-    nt_aux = [dt_aux(2,:); -dt_aux(1,:)]./dt_aux_nrm;
-end
+% target geometry at naux aux nodes
+rt_aux = (ainterp_aux*(rt.')).';
+dt_aux = (ainterp_aux*(dt_targ.')).';
+d2t_aux = (ainterp_aux*(d2t.')).';
+dt_aux_nrm = sqrt(sum(dt_aux.^2,1));
+nt_aux = [dt_aux(2,:); -dt_aux(1,:)]./dt_aux_nrm;
 
 % source geometry at nsrc oversampled nodes
 rs_aux = (ainterp_src*(rs.')).';

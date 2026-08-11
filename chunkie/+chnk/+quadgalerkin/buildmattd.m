@@ -89,7 +89,8 @@ for j = 1:nch
             % skip
         else
             submat = chnk.quadgalerkin.nearbuildmat(r,d,n,d2,data,ibefore,j, ...
-                kern,opdims,xs1,wts1,ainterp1kron,ainterp1,corrections,wtss);
+                kern,opdims,xs1,wts1,ainterp1kron,ainterp1,...
+                auxquads.ainterp_aux,auxquads.ipw,corrections,wtss);
             imat = 1 + (ibefore-1)*k*opdims(1);
             induse = ict:ict+nnz1-1;
             iind(induse) = ii1(:)+imat;
@@ -104,7 +105,8 @@ for j = 1:nch
             % skip
         else
             submat = chnk.quadgalerkin.nearbuildmat(r,d,n,d2,data,iafter,j, ...
-                kern,opdims,xs1,wts1,ainterp1kron,ainterp1,corrections,wtss);
+                kern,opdims,xs1,wts1,ainterp1kron,ainterp1,...
+                auxquads.ainterp_aux,auxquads.ipw,corrections,wtss);
             imat = 1 + (iafter-1)*k*opdims(1);
             induse = ict:ict+nnz1-1;
             iind(induse) = ii1(:)+imat;
@@ -117,15 +119,9 @@ for j = 1:nch
     if ~isempty(ilist) && ismember(j,ilist)
         % skip
     else
-        if isfield(auxquads,'exact_aux_geo') && ~isempty(auxquads.exact_aux_geo)
-            eag = auxquads.exact_aux_geo;
-        else
-            eag = [];
-        end
         submat = chnk.quadgalerkin.diagbuildmat(r,d,n,d2,data,j,kern,opdims,...
             xs0,wts0,ainterps0kron,ainterps0,...
-            auxquads.ts_aux,auxquads.ainterp_aux,auxquads.ipw,...
-            corrections,wtss,indd,eag);
+            auxquads.ainterp_aux,auxquads.ipw,corrections,wtss,indd);
         imat = 1 + (j-1)*k*opdims(1);
         induse = ict:ict+nnz1-1;
         iind(induse) = ii1(:)+imat;

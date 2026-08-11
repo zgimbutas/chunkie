@@ -35,7 +35,9 @@ ws_aux = ws_aux(:);
 
 [ts_disc,whts_disc,umatr,vmatr] = lege.exps(k);
 ainterp_aux = lege.matrin(k,ts_aux);   % naux x k, interp disc values -> aux values
-vmatr_aux = ainterp_aux;               % coeffs -> aux values (== ainterp_aux*[disc->coeffs]^-1)
+vmatr_aux = ainterp_aux*vmatr;         % naux x k, coeffs -> aux values
+                                       % (Fortran vmatr_aux semantics;
+                                       % ainterp_aux == vmatr_aux*umatr)
 
 % ipw(i,j) = (ws_aux(j) / whts_disc(i)) * L_i(ts_aux(j))
 % with L_i(ts_aux(j)) = ainterp_aux(j,i).

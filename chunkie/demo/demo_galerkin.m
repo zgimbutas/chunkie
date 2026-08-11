@@ -1,10 +1,8 @@
 %DEMO_GALERKIN compare the GGQ and chunkmatc_aux Galerkin backends.
 %
 % Solves a Laplace interior Dirichlet problem on a starfish using both
-% chunkermat backends and reports interior-point accuracy. GGQ should
-% deliver near machine precision; the Galerkin (chunkmatc_aux) backend
-% delivers ~1e-6 on this geometry, which is the practical precision of
-% the underlying algorithm.
+% chunkermat backends and reports interior-point accuracy. Both should
+% deliver near machine precision on this geometry.
 
 addpaths_loc();
 

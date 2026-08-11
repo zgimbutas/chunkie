@@ -15,15 +15,17 @@ function chunkermat_galerkin_capacitanceTest0()
 % in chunkerpoly via cparams.depth) and reports the convergence rates
 % of both backends. RCIP is OFF.
 %
-% Observed: GGQ converges spectrally to the reference (4e-11 at
-% depth=20). The chunkmatc_aux Galerkin path stalls around 2.3e-4
-% from depth>=8 onward, because the closed-form chunkmatc_form_ipipw
-% projection ipw(j,i) = (ws_aux(j)/ws_disc(i)) * L_i(ts_aux(j))
-% applied through chunkie's diagbuildmat to TINY dyadic-refined panels
-% accumulates ~9e-5 Gram-imperfection error per panel that does not
-% shrink with refinement. The Fortran chunkmatc_aux reportedly does
-% reach more digits in the same scenario; pinning down where my port
-% loses the precision in that limit is left as a follow-up.
+% Observed: both backends converge spectrally to the reference, with
+% Galerkin ~2x ahead of GGQ at each depth (1.9e-11 vs 4.4e-11 at
+% depth=20). An earlier version of the Galerkin port stalled at ~2e-4
+% because neighbor blocks were assembled with a smooth oversampled
+% source rule, which cannot resolve the near-log singularity seen by
+% the aux targets clustered toward the shared panel endpoint; that
+% error is scale-invariant under dyadic refinement and so never
+% decayed. Neighbor blocks now use the GGQ log intermediate rule
+% evaluated at the aux targets followed by the same ipw projection
+% (chnk.quadgalerkin.nearbuildmat), which matches the reference
+% Fortran's adaptive off-diagonal quadrature to machine precision.
 
 cap_chunkmatc_ref = -6.03125250071049;
 cap_ref = cap_chunkmatc_ref * (2*pi);   % chunkie convention
@@ -57,11 +59,8 @@ for depth = [0 4 8 12 20]
     e_ggq_last = e_ggq; e_gal_last = e_gal;
 end
 
-% GGQ should reach machine precision at the deepest refinement
+% both backends should reach machine precision at the deepest refinement
 assert(e_ggq_last < 1e-9, 'ggq did not converge to capacitance reference');
-% Galerkin's known limitation: stalls in the ~1e-4 range with chunkie's
-% geometry pipeline (despite using the same closed-form projection as
-% the chunkmatc-matlab reference)
-fprintf('\n[note] galerkin error at finest refinement = %.2e (known limitation)\n',e_gal_last);
+assert(e_gal_last < 1e-9, 'galerkin did not converge to capacitance reference');
 
 end

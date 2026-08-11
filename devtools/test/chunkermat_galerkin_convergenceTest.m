@@ -10,12 +10,9 @@ function chunkermat_galerkin_convergenceTest0()
 % polygon, varying cparams.depth (dyadic-refinement depth into corners
 % inside chunkerpoly). RCIP is disabled for both backends.
 %
-% At realistic refinement levels (depth 0-20) Galerkin consistently
-% beats GGQ by ~3x on the same panel count, mirroring the chunkmatc
-% Fortran reference's known corner advantage. They cross over only at
-% depth=30, where the closed-form chunkmatc_form_ipipw projection's
-% ~9e-5 Gram-orthogonality imperfection limits Galerkin while GGQ
-% keeps converging spectrally.
+% Galerkin consistently beats GGQ by ~3x at every refinement depth on
+% the same panel count, mirroring the chunkmatc Fortran reference's
+% known corner advantage, with both backends converging spectrally.
 
 w = 1.0; h = 1.0; g = 0.05;
 geo = -[ -w*g -w*g -w/2 -w/2 w/2 w/2 w*g w*g  w  w -w -w; ...
