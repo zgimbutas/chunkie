@@ -8,16 +8,17 @@ function sysmat = buildmat(chnkr,kern,opdims,type,auxquads,ilist)
 %
 % Off-diagonal source quadrature ports chunkmatc_aux_od faithfully:
 % the reference integrates every off-diagonal block adaptively
-% (eps 1e-13) with a recursion early-exit once the target is farther
-% than 3x the subinterval radius, so separated blocks reduce to a
-% fixed Gauss rule. Here, any block whose aux targets come within 3x
-% the source-panel radius (in particular all neighbor blocks, and
-% close-but-not-adjacent pairs across corners) is computed by
-% per-target adaptive quadrature (chnk.adapgausswts, the cadachunk
-% analog) via chnk.quadgalerkin.nearbuildmat; genuinely separated
-% blocks use the oversampled smooth rule of smoothbuildmat, which
-% agrees with the adaptive result to machine precision there. The
-% self block uses the per-target singular tables.
+% (eps 1e-13) with a recursion early-exit once the target is far
+% relative to the subinterval radius, so separated blocks reduce to a
+% fixed Gauss rule. Here, any block whose aux targets come within
+% 2.4x the source-panel radius (the cap2Dsolver FMM near-field
+% criterion; in particular all neighbor blocks and close-but-not-
+% adjacent pairs across corners) is computed by per-target adaptive
+% quadrature (chnk.adapgausswts, the cadachunk analog) via
+% chnk.quadgalerkin.nearbuildmat; genuinely separated blocks use the
+% oversampled smooth rule of smoothbuildmat, which agrees with the
+% adaptive result to machine precision there. The self block uses the
+% per-target singular tables.
 %
 % Input:
 %   chnkr - chunker object describing boundary
@@ -91,16 +92,9 @@ else
     [tadap,wadap] = lege.exps(2*k+1);
 end
 
-% per-panel aux-target positions and source centers/radii for the
-% 3x-radius near/far decision (the reference's cadpatchre boundary)
-rt_aux_all = zeros(2,size(ainterp_aux,1),nch);
-cen = zeros(2,nch);
-rad = zeros(1,nch);
-for j = 1:nch
-    rt_aux_all(:,:,j) = (ainterp_aux*(r(:,:,j).')).';
-    cen(:,j) = mean(r(:,:,j),2);
-    rad(j) = sqrt(max(sum((r(:,:,j)-cen(:,j)).^2,1)));
-end
+% near/far decision at the reference family's 2.4-radius boundary
+% (cap2Dsolver FMM near-field criterion, chunkfmm2d0npairs)
+nearf = chnk.quadgalerkin.nearflags(r,ainterp_aux,2.4);
 
 sysmat = zeros(k*nch*opdims(1),k*nch*opdims(2));
 for it = 1:nch
@@ -115,8 +109,7 @@ for it = 1:nch
         end
         jmat_o = 1 + (js-1)*k*opdims(2);
         jmatend_o = js*k*opdims(2);
-        dmin = sqrt(min(sum((rt_aux_all(:,:,it)-cen(:,js)).^2,1)));
-        if dmin > 3*rad(js)
+        if ~nearf(it,js)
             sysmat(imat:imatend,jmat_o:jmatend_o) = ...
                 chnk.quadgalerkin.smoothbuildmat(r,d,n,d2,data,it,js,...
                     kern,opdims,ainterp_aux,ipw,...

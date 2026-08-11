@@ -3,13 +3,19 @@ function spmat = buildmattd(chnkr,kern,opdims,type,auxquads,ilist,corrections)
 % (chunkmatc_aux aux-projection) backend, optionally as a correction to
 % the native smooth (Gauss-Legendre) baseline.
 %
-% Returns a sparse matrix containing only the entries on the
-% (target_panel == source_panel) diagonal block and on the two neighbor
-% off-diagonal blocks. All other entries are zero. When corrections is
-% true, the entries are differences (Galerkin - native smooth) suitable
-% for adding on top of a pre-built smooth matrix.
+% Returns a sparse matrix containing the (target_panel == source_panel)
+% diagonal blocks, the two neighbor off-diagonal blocks, and every
+% close-but-not-adjacent block within the 2.4-radius near boundary
+% (chnk.quadgalerkin.nearflags -- the cap2Dsolver FMM near-field
+% criterion), all computed with the adaptive aux-projection quadrature.
+% All other entries are zero. When corrections is true, the entries are
+% differences (Galerkin - native smooth) suitable for adding on top of
+% a pre-built smooth matrix: this is the FMM-compatible decomposition
+% (smooth rule applied by an FMM in the far field, sparse Galerkin
+% corrections for all pairs within 2.4 radii, exactly as in the
+% cap2Dsolver FMM path).
 %
-% Mirrors chnk.quadggq.buildmattd.
+% Mirrors chnk.quadggq.buildmattd, with the extra near-pair blocks.
 
 if nargin < 3
     error('not enough arguments in chnk.quadgalerkin.buildmattd');
@@ -76,7 +82,15 @@ end
 mmat = k*nch*opdims(1);
 nmat = k*nch*opdims(2);
 
-nnz_max = k*nch*opdims(1)*k*3*opdims(2);
+% close-but-not-adjacent pairs inside the 2.4-radius near boundary
+nearf = chnk.quadgalerkin.nearflags(r,auxquads.ainterp_aux,2.4);
+for j = 1:nch
+    if adj(1,j) > 0, nearf(adj(1,j),j) = false; end
+    if adj(2,j) > 0, nearf(adj(2,j),j) = false; end
+end
+npair = nnz(nearf);
+
+nnz_max = k*nch*opdims(1)*k*3*opdims(2) + k*opdims(1)*k*opdims(2)*npair;
 nnz1 = k*opdims(1)*k*opdims(2);
 v = zeros(nnz_max,1);
 iind = zeros(nnz_max,1);
@@ -135,6 +149,25 @@ for j = 1:nch
         v(induse) = submat(:);
         ict = ict + nnz1;
     end
+end
+
+% near-but-not-adjacent pairs (2.4-radius criterion)
+[ilistn,jlistn] = find(nearf);
+for ip = 1:npair
+    it = ilistn(ip); js = jlistn(ip);
+    if ~isempty(ilist) && ismember(it,ilist) && ismember(js,ilist)
+        continue
+    end
+    submat = chnk.quadgalerkin.nearbuildmat(r,d,n,d2,data,it,js, ...
+        kern,opdims,auxquads.ainterp_aux,auxquads.ipw,...
+        ct,bw,tadap,wadap,corrections,wtss);
+    imat = 1 + (it-1)*k*opdims(1);
+    jmat = 1 + (js-1)*k*opdims(2);
+    induse = ict:ict+nnz1-1;
+    iind(induse) = ii1(:)+imat;
+    jind(induse) = jj1(:)+jmat;
+    v(induse) = submat(:);
+    ict = ict + nnz1;
 end
 
 nz = ict-1;
