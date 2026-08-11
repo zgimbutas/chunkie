@@ -106,4 +106,11 @@ auxquad.ts_src = ts_src;
 auxquad.whts_src = whts_src;
 auxquad.ainterp_src = ainterp_src;
 
+% precomputes for the adaptive near-block quadrature (chnk.adapgausswts,
+% the chunkmatc_aux_od port): order-k barycentric interpolation data and
+% the order-(2k+1) integration rule used inside the adaptive recursion
+auxquad.ct = auxquad.ts_disc;
+auxquad.bw = lege.barywts(k,auxquad.ct);
+[auxquad.tadap,auxquad.wadap] = lege.exps(2*k+1);
+
 end

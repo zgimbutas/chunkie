@@ -43,17 +43,23 @@ end
 
 temp = eye(opdims(2));
 
-xs1 = auxquads.xs1;
-wts1 = auxquads.wts1;
 xs0 = auxquads.xs0;
 wts0 = auxquads.wts0;
-ainterp1 = auxquads.ainterp1;
-ainterp1kron = kron(ainterp1,temp);
 ainterps0 = auxquads.ainterps0;
 nrules = numel(ainterps0);
 ainterps0kron = cell(nrules,1);
 for j = 1:nrules
     ainterps0kron{j} = kron(ainterps0{j},temp);
+end
+
+% adaptive-quadrature precomputes for the near blocks
+if isfield(auxquads,'ct')
+    ct = auxquads.ct; bw = auxquads.bw;
+    tadap = auxquads.tadap; wadap = auxquads.wadap;
+else
+    ct = lege.exps(k);
+    bw = lege.barywts(k,ct);
+    [tadap,wadap] = lege.exps(2*k+1);
 end
 
 if corrections
@@ -89,8 +95,8 @@ for j = 1:nch
             % skip
         else
             submat = chnk.quadgalerkin.nearbuildmat(r,d,n,d2,data,ibefore,j, ...
-                kern,opdims,xs1,wts1,ainterp1kron,ainterp1,...
-                auxquads.ainterp_aux,auxquads.ipw,corrections,wtss);
+                kern,opdims,auxquads.ainterp_aux,auxquads.ipw,...
+                ct,bw,tadap,wadap,corrections,wtss);
             imat = 1 + (ibefore-1)*k*opdims(1);
             induse = ict:ict+nnz1-1;
             iind(induse) = ii1(:)+imat;
@@ -105,8 +111,8 @@ for j = 1:nch
             % skip
         else
             submat = chnk.quadgalerkin.nearbuildmat(r,d,n,d2,data,iafter,j, ...
-                kern,opdims,xs1,wts1,ainterp1kron,ainterp1,...
-                auxquads.ainterp_aux,auxquads.ipw,corrections,wtss);
+                kern,opdims,auxquads.ainterp_aux,auxquads.ipw,...
+                ct,bw,tadap,wadap,corrections,wtss);
             imat = 1 + (iafter-1)*k*opdims(1);
             induse = ict:ict+nnz1-1;
             iind(induse) = ii1(:)+imat;
