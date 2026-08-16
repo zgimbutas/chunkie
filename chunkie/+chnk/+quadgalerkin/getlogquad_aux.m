@@ -11,11 +11,19 @@ function [ts_aux,ws_aux,xs0,ws0] = getlogquad_aux(k)
 %                       for j = 1..2*k. Length of each cell is the
 %                       table-specific number of source nodes (~ 2*k).
 %
-% Tables ship for k in {4, 6, 8, 10, 12, 14, 16, 20}.
+% Tables ship for k in {1, 2, 3, 4, 5, 6, 8, 10, 12, 16, 20}.
 
 switch k
+    case 1
+        [ts_aux,ws_aux,xs0,ws0] = chnk.quadgalerkin.auxlog_nnode001_naux002();
+    case 2
+        [ts_aux,ws_aux,xs0,ws0] = chnk.quadgalerkin.auxlog_nnode002_naux004();
+    case 3
+        [ts_aux,ws_aux,xs0,ws0] = chnk.quadgalerkin.auxlog_nnode003_naux006();
     case 4
         [ts_aux,ws_aux,xs0,ws0] = chnk.quadgalerkin.auxlog_nnode004_naux008();
+    case 5
+        [ts_aux,ws_aux,xs0,ws0] = chnk.quadgalerkin.auxlog_nnode005_naux010();
     case 6
         [ts_aux,ws_aux,xs0,ws0] = chnk.quadgalerkin.auxlog_nnode006_naux012();
     case 8
@@ -24,8 +32,6 @@ switch k
         [ts_aux,ws_aux,xs0,ws0] = chnk.quadgalerkin.auxlog_nnode010_naux020();
     case 12
         [ts_aux,ws_aux,xs0,ws0] = chnk.quadgalerkin.auxlog_nnode012_naux024();
-    case 14
-        [ts_aux,ws_aux,xs0,ws0] = chnk.quadgalerkin.auxlog_nnode014_naux028();
     case 16
         [ts_aux,ws_aux,xs0,ws0] = chnk.quadgalerkin.auxlog_nnode016_naux032();
     case 20

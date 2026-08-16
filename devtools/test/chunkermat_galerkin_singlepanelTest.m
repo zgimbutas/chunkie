@@ -26,7 +26,10 @@ L = 0.4;
 fkern = @(s,t) chnk.lap2d.kern(s,t,'s');
 fprintf('Single straight panel of length L=%.2f, Laplace S, no neighbors\n',L);
 fprintf('%-4s %-12s %-12s\n','k','rel-F','max-abs');
-for k = [4 6 8 10 12 16]
+% k = 1 is omitted: chunker asserts k >= 2, so order-1 panels cannot be
+% carried by a chunker even though the aux table ships for parity with
+% chnk.quadggq.ggqself_nnode001_npoly002.
+for k = [2 3 4 5 6 8 10 12 16 20]
     [ts,wts] = lege.exps(k); ts = ts(:).';
     r  = [(1+ts)*L/2; zeros(1,k)];
     d  = [(L/2)*ones(1,k); zeros(1,k)];
